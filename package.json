@@ -1,8 +1,0 @@
-{
-  "name": "task-management-root",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "cd taskflow && npm install && npm run build"
-  }
-}

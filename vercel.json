@@ -1,6 +1,0 @@
-{
-  "version": 2,
-  "buildCommand": "cd taskflow && npm install && npm run build",
-  "outputDirectory": "taskflow/.next",
-  "framework": "nextjs"
-}
