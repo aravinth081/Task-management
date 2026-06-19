@@ -6,6 +6,6 @@
     "taskflow"
   ],
   "scripts": {
-    "build": "npm run build --prefix taskflow"
+    "build": "cd taskflow && npm run build"
   }
 }

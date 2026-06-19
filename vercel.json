@@ -1,6 +1,6 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npm run build --prefix taskflow",
+  "buildCommand": "cd taskflow && npm run build",
   "outputDirectory": "taskflow/.next"
 }
