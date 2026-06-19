@@ -1,0 +1,7 @@
+# Ignore Python planning agent files to prevent Vercel from treating them as serverless functions
+src/
+requirements.txt
+runtime.txt
+
+# Ignore Express backend server files
+server/
