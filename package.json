@@ -1,0 +1,11 @@
+{
+  "name": "task-management-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "taskflow"
+  ],
+  "scripts": {
+    "build": "npm run build --prefix taskflow"
+  }
+}
