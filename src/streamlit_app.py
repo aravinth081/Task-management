@@ -1,0 +1,536 @@
+import json
+import time
+import html
+import streamlit as st
+from planner_service import generate_plan
+
+st.set_page_config(page_title="AI Task Planner Agent", layout="centered")
+
+st.markdown(
+    """
+    <style>
+    :root {
+        --heading-size: 3.8rem;
+        --sub-size: calc(var(--heading-size) * 0.38);
+        --caption-size: calc(var(--heading-size) * 0.26);
+    }
+
+    .stApp {
+        background: radial-gradient(circle at top left, #0f172a, #111827 35%, #020617 100%);
+        color: #e5e7eb;
+        overflow: hidden;
+    }
+
+    /* Keep app content above animated background layers */
+    .stApp > *:not(.bg-grid):not(.bg-scan):not(.bg-particles) {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Layer 1: Futuristic grid */
+    .bg-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image:
+            linear-gradient(rgba(56, 189, 248, 0.11) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(56, 189, 248, 0.11) 1px, transparent 1px);
+        background-size: 48px 48px, 48px 48px;
+        mask-image: radial-gradient(circle at 50% 35%, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.35) 72%, rgba(0, 0, 0, 0));
+        -webkit-mask-image: radial-gradient(circle at 50% 35%, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.35) 72%, rgba(0, 0, 0, 0));
+        opacity: 0.5;
+        transform-origin: center top;
+        transform: perspective(900px) rotateX(58deg) scale(1.2);
+        animation: gridDrift 26s linear infinite;
+    }
+
+    /* Layer 2: Scanning glow line */
+    .bg-scan {
+        position: fixed;
+        inset: -30% 0;
+        z-index: 0;
+        pointer-events: none;
+        background: linear-gradient(
+            to bottom,
+            transparent 40%,
+            rgba(34, 211, 238, 0.0) 47%,
+            rgba(34, 211, 238, 0.25) 50%,
+            rgba(167, 139, 250, 0.18) 52%,
+            rgba(34, 211, 238, 0.0) 56%,
+            transparent 65%
+        );
+        transform: translateY(-120%);
+        animation: scanSweep 7.5s linear infinite;
+        filter: blur(0.3px);
+    }
+
+    /* Layer 3: Floating particles */
+    .bg-particles {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .bg-particles::before,
+    .bg-particles::after {
+        content: "";
+        position: absolute;
+        inset: -20%;
+        background-repeat: repeat;
+        will-change: transform, opacity, filter;
+    }
+
+    .bg-particles::before {
+        background-image:
+            radial-gradient(circle, rgba(125, 211, 252, 0.65) 1.2px, transparent 2.2px),
+            radial-gradient(circle, rgba(196, 181, 253, 0.55) 1.1px, transparent 2.1px);
+        background-size: 130px 130px, 190px 190px;
+        background-position: 10px 20px, 80px 120px;
+        animation: particleDriftA 26s linear infinite, twinkleA 3.2s ease-in-out infinite;
+        filter: drop-shadow(0 0 4px rgba(125, 211, 252, 0.35));
+    }
+
+    .bg-particles::after {
+        background-image:
+            radial-gradient(circle, rgba(244, 114, 182, 0.50) 1.2px, transparent 2.2px),
+            radial-gradient(circle, rgba(103, 232, 249, 0.60) 1.1px, transparent 2.0px);
+        background-size: 170px 170px, 230px 230px;
+        background-position: 50px 90px, 140px 40px;
+        animation: particleDriftB 38s linear infinite, twinkleB 4.1s ease-in-out infinite;
+        filter: drop-shadow(0 0 5px rgba(167, 139, 250, 0.28));
+    }
+
+    @keyframes scanSweep {
+        0%   { transform: translateY(-120%); opacity: 0; }
+        8%   { opacity: 1; }
+        55%  { opacity: 1; }
+        100% { transform: translateY(120%); opacity: 0; }
+    }
+
+    @keyframes particleDriftA {
+        0%   { transform: translate3d(0, 0, 0); }
+        100% { transform: translate3d(-120px, -240px, 0); }
+    }
+
+    @keyframes particleDriftB {
+        0%   { transform: translate3d(0, 0, 0); }
+        100% { transform: translate3d(100px, -220px, 0); }
+    }
+
+    @keyframes gridDrift {
+        0%   { background-position: 0 0, 0 0; }
+        100% { background-position: 48px 96px, 96px 48px; }
+    }
+
+    @keyframes ambientShift {
+        0%   { transform: translate3d(-20px, -10px, 0) scale(1); }
+        100% { transform: translate3d(20px, 14px, 0) scale(1.05); }
+    }
+
+    @keyframes twinkleA {
+        0%, 100% { opacity: 0.25; }
+        50%      { opacity: 1.00; }
+    }
+
+    @keyframes twinkleB {
+        0%, 100% { opacity: 0.18; }
+        50%      { opacity: 0.92; }
+    }
+
+    .flow-title {
+        font-size: var(--heading-size);
+        font-weight: 850;
+        line-height: 1.1;
+        letter-spacing: 0.35px;
+        margin-bottom: 0.3rem;
+
+        background: linear-gradient(90deg, #22d3ee, #a78bfa, #f472b6, #22d3ee);
+        background-size: 250% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: flowText 5s linear infinite;
+    }
+
+    .subtext {
+        color: #cbd5e1;
+        font-size: var(--sub-size);
+        margin-bottom: 0.38rem;
+        font-weight: 520;
+        line-height: 1.35;
+    }
+
+    .glass-caption {
+        color: #93c5fd;
+        font-size: var(--caption-size);
+        margin: 0.05rem 0 0.55rem 0;
+        line-height: 1.4;
+    }
+
+    @keyframes flowText {
+        0% { background-position: 0% center; }
+        100% { background-position: 250% center; }
+    }
+
+    /* Gradient prompt box */
+    div[data-testid="stTextArea"] > div {
+        padding: 2px;
+        border-radius: 14px;
+        background: linear-gradient(120deg, #22d3ee, #8b5cf6, #ec4899, #22d3ee);
+        background-size: 250% 250%;
+        animation: flowBorder 6s ease infinite;
+        box-shadow: 0 8px 30px rgba(34, 211, 238, 0.18);
+    }
+
+    div[data-testid="stTextArea"] textarea {
+        border-radius: 12px !important;
+        border: 0 !important;
+        color: #f8fafc !important;
+        background: linear-gradient(160deg, rgba(15,23,42,0.95), rgba(30,41,59,0.92)) !important;
+        backdrop-filter: blur(2px);
+    }
+
+    div[data-testid="stTextArea"] {
+        background: linear-gradient(
+            145deg,
+            rgba(255, 255, 255, 0.10),
+            rgba(255, 255, 255, 0.04)
+        );
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        padding: 14px 14px 10px 14px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.28);
+    }
+
+    /* Glassmorphism button */
+    div.stButton > button {
+        width: 100%;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        color: #eaf2ff;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        background: linear-gradient(
+            120deg,
+            rgba(34, 211, 238, 0.28),
+            rgba(139, 92, 246, 0.28),
+            rgba(236, 72, 153, 0.25)
+        );
+        backdrop-filter: blur(10px);
+        box-shadow: 0 10px 26px rgba(59, 130, 246, 0.25);
+        transition: all 0.25s ease;
+    }
+
+    div.stButton > button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255, 255, 255, 0.45);
+        box-shadow: 0 14px 30px rgba(168, 85, 247, 0.30);
+        filter: brightness(1.06);
+    }
+
+    .glass-card {
+        margin-top: 1rem;
+        border-radius: 18px;
+        padding: 1rem;
+        background: linear-gradient(
+            145deg,
+            rgba(15, 23, 42, 0.62),   /* app dark bg tone */
+            rgba(30, 41, 59, 0.45)
+        );
+        border: 1px solid rgba(147, 197, 253, 0.30); /* caption blue */
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow:
+            0 14px 36px rgba(2, 6, 23, 0.45),
+            inset 0 1px 0 rgba(226, 232, 240, 0.10);
+    }
+
+    .card-title {
+        margin: 0 0 0.65rem 0;
+        font-size: 1.06rem;
+        font-weight: 760;
+        color: #e2e8f0; /* heading/sub text family */
+        padding: 0.6rem 0.75rem;
+        border-radius: 12px;
+        background: linear-gradient(
+            120deg,
+            rgba(34, 211, 238, 0.14), /* cyan from flow title */
+            rgba(167, 139, 250, 0.12), /* violet from flow title */
+            rgba(244, 114, 182, 0.10)  /* pink from flow title */
+        );
+        border: 1px solid rgba(203, 213, 225, 0.28);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    .card-list {
+        margin: 0;
+        padding: 0.4rem;
+        list-style: none;
+        border-radius: 12px;
+        background: linear-gradient(
+            145deg,
+            rgba(15, 23, 42, 0.55),
+            rgba(30, 41, 59, 0.40)
+        );
+        border: 1px solid rgba(148, 163, 184, 0.26);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    .card-list li {
+        color: #dbeafe; /* existing list text color */
+        margin: 0.38rem 0;
+        line-height: 1.4;
+        padding: 0.55rem 0.7rem;
+        border-radius: 10px;
+        background: linear-gradient(
+            135deg,
+            rgba(34, 211, 238, 0.10),
+            rgba(139, 92, 246, 0.10),
+            rgba(244, 114, 182, 0.08)
+        );
+        border: 1px solid rgba(147, 197, 253, 0.24);
+        box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.12);
+    }
+
+    .card-list li::before {
+        content: "• ";
+        color: #93c5fd;
+        font-weight: 700;
+        margin-right: 0.2rem;
+    }
+
+    @keyframes flowBorder {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* NEW: Ambient glow layer */
+    .bg-ambient {
+        position: fixed;
+        inset: -20%;
+        z-index: 0;
+        pointer-events: none;
+        background:
+            radial-gradient(circle at 15% 20%, rgba(34, 211, 238, 0.14), transparent 35%),
+            radial-gradient(circle at 85% 30%, rgba(167, 139, 250, 0.14), transparent 38%),
+            radial-gradient(circle at 55% 80%, rgba(244, 114, 182, 0.10), transparent 42%);
+        filter: blur(18px);
+        animation: ambientShift 22s ease-in-out infinite alternate;
+    }
+
+    /* ENHANCE: Grid depth + subtle motion */
+    .bg-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image:
+            linear-gradient(rgba(56, 189, 248, 0.11) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(56, 189, 248, 0.11) 1px, transparent 1px);
+        background-size: 48px 48px, 48px 48px;
+        mask-image: radial-gradient(circle at 50% 35%, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.35) 72%, rgba(0, 0, 0, 0));
+        -webkit-mask-image: radial-gradient(circle at 50% 35%, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0.35) 72%, rgba(0, 0, 0, 0));
+        opacity: 0.5;
+        transform-origin: center top;
+        transform: perspective(900px) rotateX(58deg) scale(1.2);
+        animation: gridDrift 26s linear infinite;
+        opacity: 0.42;
+    }
+
+    /* ENHANCE: Dual scan beams */
+    .bg-scan::before,
+    .bg-scan::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
+
+    .bg-scan::before {
+        background: linear-gradient(
+            to bottom,
+            transparent 42%,
+            rgba(34, 211, 238, 0.0) 47%,
+            rgba(34, 211, 238, 0.28) 50%,
+            rgba(34, 211, 238, 0.0) 55%,
+            transparent 62%
+        );
+        animation: scanSweep 7.5s linear infinite;
+    }
+
+    .bg-scan::after {
+        background: linear-gradient(
+            to bottom,
+            transparent 38%,
+            rgba(167, 139, 250, 0.0) 45%,
+            rgba(167, 139, 250, 0.18) 49%,
+            rgba(167, 139, 250, 0.0) 54%,
+            transparent 64%
+        );
+        animation: scanSweep 10.5s linear infinite;
+        mix-blend-mode: screen;
+    }
+
+    /* ENHANCE: Particle twinkle */
+    .bg-particles::before {
+        background-image:
+            radial-gradient(circle, rgba(125, 211, 252, 0.40) 1px, transparent 1.8px),
+            radial-gradient(circle, rgba(196, 181, 253, 0.30) 1px, transparent 2px);
+        background-size: 130px 130px, 190px 190px;
+        background-position: 10px 20px, 80px 120px;
+        animation: particleDriftA 26s linear infinite, twinkleA 4.8s ease-in-out infinite;
+    }
+
+    .bg-particles::after {
+        background-image:
+            radial-gradient(circle, rgba(244, 114, 182, 0.24) 1px, transparent 2px),
+            radial-gradient(circle, rgba(103, 232, 249, 0.32) 1px, transparent 1.8px);
+        background-size: 170px 170px, 230px 230px;
+        background-position: 50px 90px, 140px 40px;
+        animation: particleDriftB 38s linear infinite, twinkleB 6.2s ease-in-out infinite;
+    }
+
+    @keyframes gridDrift {
+        0%   { background-position: 0 0, 0 0; }
+        100% { background-position: 48px 96px, 96px 48px; }
+    }
+
+    @keyframes ambientShift {
+        0%   { transform: translate3d(-20px, -10px, 0) scale(1); }
+        100% { transform: translate3d(20px, 14px, 0) scale(1.05); }
+    }
+
+    @keyframes twinkleA {
+        0%, 100% { opacity: 0.75; }
+        50% { opacity: 1; }
+    }
+
+    @keyframes twinkleB {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 0.9; }
+    }
+
+    /* Professional accessibility/perf fallback */
+    @media (prefers-reduced-motion: reduce) {
+        .bg-grid, .bg-scan, .bg-particles::before, .bg-particles::after, .bg-ambient {
+            animation: none !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    "<div class='bg-ambient'></div><div class='bg-grid'></div><div class='bg-scan'></div><div class='bg-particles'></div>",
+    unsafe_allow_html=True,
+)
+
+def _type_line(placeholder, css_class: str, text: str, delay: float = 0.02) -> None:
+    safe = html.escape(text)
+    for i in range(1, len(safe) + 1):
+        placeholder.markdown(f"<div class='{css_class}'>{safe[:i]}</div>", unsafe_allow_html=True)
+        time.sleep(delay)
+
+title_text = "AI Task Planner Agent"
+sub_text = "Generate structured agenda, checklist, and timeline from your goal."
+caption_text = "Describe your goal and generate a polished plan."
+
+title_placeholder = st.empty()
+sub_placeholder = st.empty()
+caption_placeholder = st.empty()
+
+if "intro_typed" not in st.session_state:
+    _type_line(title_placeholder, "flow-title", title_text, delay=0.04)
+    _type_line(sub_placeholder, "subtext", sub_text, delay=0.02)
+    _type_line(caption_placeholder, "glass-caption", caption_text, delay=0.015)
+    st.session_state.intro_typed = True
+else:
+    title_placeholder.markdown(f"<div class='flow-title'>{title_text}</div>", unsafe_allow_html=True)
+    sub_placeholder.markdown(f"<div class='subtext'>{sub_text}</div>", unsafe_allow_html=True)
+    caption_placeholder.markdown(f"<div class='glass-caption'>{caption_text}</div>", unsafe_allow_html=True)
+
+user_goal = st.text_area(
+    "Enter your goal",
+    placeholder="Example: Plan a 4-week launch roadmap for my portfolio website",
+    height=120,
+)
+
+if "is_generating" not in st.session_state:
+    st.session_state.is_generating = False
+
+if "last_submit_ts" not in st.session_state:
+    st.session_state.last_submit_ts = 0.0
+
+COOLDOWN_SECONDS = 1.5
+
+generate_clicked = st.button(
+    "Generate Plan",
+    type="primary",
+    disabled=st.session_state.is_generating,
+)
+
+if generate_clicked:
+    now = time.time()
+
+    if st.session_state.is_generating:
+        st.info("A plan is already being generated. Please wait.")
+        st.stop()
+
+    if now - st.session_state.last_submit_ts < COOLDOWN_SECONDS:
+        st.warning("Please wait a moment before submitting again.")
+        st.stop()
+
+    if not user_goal.strip():
+        st.warning("Please enter a goal first.")
+    else:
+        st.session_state.is_generating = True
+        st.session_state.last_submit_ts = now
+
+        status_placeholder = st.empty()
+        status_placeholder.info("🔄 Calling API and generating your plan...")
+
+        try:
+            with st.spinner("Generating your plan..."):
+                plan = generate_plan(user_goal.strip())
+        except RuntimeError as exc:
+            status_placeholder.empty()
+            st.error(str(exc))
+        except Exception:
+            status_placeholder.empty()
+            st.error(
+                "Something went wrong while generating the plan. "
+                "Please try again."
+            )
+        else:
+            status_placeholder.empty()
+            st.success("Plan generated")
+
+            def render_card(title: str, items: list[str]) -> None:
+                list_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+                st.markdown(
+                    (
+                        "<div class='glass-card'>"
+                        f"<div class='card-title'>{html.escape(title)}</div>"
+                        f"<ul class='card-list'>{list_html}</ul>"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            render_card("Agenda", plan.get("agenda", []))
+            render_card("Checklist", plan.get("checklist", []))
+            render_card("Timeline", plan.get("timeline", []))
+
+            st.markdown("<div class='json-shell'>", unsafe_allow_html=True)
+            with st.expander("Raw JSON"):
+                st.code(json.dumps(plan, indent=2, ensure_ascii=False), language="json")
+            st.markdown("</div>", unsafe_allow_html=True)
+        finally:
+            st.session_state.is_generating = False
